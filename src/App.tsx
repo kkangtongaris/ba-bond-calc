@@ -154,7 +154,7 @@ export default function App() {
   return (
     <div className="container">
       <header className="header">
-        <h1>블루 아카이브 인연랭 &amp; 합성 선물 판별기</h1>
+        <h1>블루 아카이브 인연랭 계산기 &amp; 합성 선물 판별기</h1>
         <p>육성할 학생을 선택하고 선물 창 스크린샷을 올리면, 합성해도 되는 선물과 목표 랭크 필요 수량을 자동 계산합니다.</p>
       </header>
 
