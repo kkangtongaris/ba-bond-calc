@@ -263,7 +263,7 @@ export function BondCalculator({
                 <div className="progress-text">
                   {isComplete ? (
                     <span className="text-ok">
-                      ✅ 보유 선물로 목표 달성 가능! (예상 도달: Lv.{plan.estimatedRank})
+                      보유 선물로 목표 달성 가능! (예상 도달: Lv.{plan.estimatedRank})
                     </span>
                   ) : (
                     <span className="text-warn">

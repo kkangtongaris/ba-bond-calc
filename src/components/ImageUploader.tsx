@@ -74,7 +74,7 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
     <div className="uploader-box">
       <div className="uploader-top">
         <label className="upload-btn">
-          📷 인게임 선물 창 스크린샷 업로드 (또는 Ctrl+V 붙여넣기)
+          인게임 선물 창 스크린샷 업로드 (또는 Ctrl+V 붙여넣기)
           <input
             type="file"
             accept="image/*"
@@ -87,9 +87,9 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
             }}
           />
         </label>
-        <span className="upload-hint">
-          Win+Shift+S로 선물 목록을 캡처한 뒤 화면에 바로 Ctrl+V를 눌러도 인식됩니다.
-        </span>
+        <p className="uploader-hint">
+        아이템 가방(선물 탭) 또는 카페 선물 창 스크린샷을 올려주세요. (PC는 Win+Shift+S 캡처 후 Ctrl+V 가능)
+      </p>
       </div>
 
       {isScanning && <div className="scan-status">⏳ {progressMsg}</div>}

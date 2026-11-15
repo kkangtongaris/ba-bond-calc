@@ -246,7 +246,7 @@ export default function App() {
           className={`main-tab-btn ${activeTab === 'crafting' ? 'active' : ''}`}
           onClick={() => setActiveTab('crafting')}
         >
-          <span>🎁 합성 선물 판별기 &amp; 보유량</span>
+          <span>합성 선물 판별기 &amp; 보유량</span>
           <span className="tab-badge">합성 OK {craftableOwnedTotal}개</span>
         </button>
 
@@ -255,7 +255,7 @@ export default function App() {
           className={`main-tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
           onClick={() => setActiveTab('calculator')}
         >
-          <span>📈 인연 랭크 계산기</span>
+          <span>인연 랭크 계산기</span>
           <span className="tab-badge">{selectedStudents.length}명</span>
         </button>
       </nav>
