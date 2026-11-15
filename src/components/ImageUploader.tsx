@@ -13,8 +13,9 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
   const [results, setResults] = useState<ScannedGiftResult[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [replaceAll, setReplaceAll] = useState(false);
+
   const processFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) return;
+    if (!file.type.startsWith('image/') || isScanning) return;
     setIsScanning(true);
     setErrorMsg(null);
     setResults([]);
@@ -23,7 +24,7 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
       const scanned = await scanGiftScreenshot(file, gifts, setProgressMsg);
       if (scanned.length === 0) {
         setErrorMsg(
-          '선물 아이콘을 찾지 못했습니다. 인게임 카페 선물 창이나 아이템 가방의 선물 탭 전체 화면을 캡처해 주세요.'
+          '선물 아이콘을 찾지 못했습니다. 인게임 아이템 가방(선물 탭) 또는 카페 선물 창 전체 화면을 캡처해 주세요.'
         );
       } else {
         setResults(scanned);
@@ -36,7 +37,6 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
     }
   };
 
-  // 페이지 어디서든 Ctrl+V로 클립보드 스크린샷 바로 인식
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -44,62 +44,77 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
       for (const item of items) {
         if (item.type.startsWith('image/')) {
           const file = item.getAsFile();
-          if (file) processFile(file);
-          break;
+          if (file) {
+            processFile(file);
+            break;
+          }
         }
       }
     };
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [gifts]);
+  });
 
-  const updateScannedCount = (index: number, val: string) => {
-    const num = Math.max(0, parseInt(val, 10) || 0);
+  const handleCountEdit = (idx: number, raw: string) => {
+    const val = Math.max(0, parseInt(raw, 10) || 0);
     setResults((prev) =>
-      prev.map((item, idx) => (idx === index ? { ...item, count: num } : item))
+      prev.map((item, i) => (i === idx ? { ...item, count: val } : item))
     );
   };
 
   const handleApply = () => {
-    const map: Record<number, number> = {};
+    const detected: Record<number, number> = {};
     for (const item of results) {
-      // 스크롤 겹침 등으로 동일 선물이 중복 인식된 경우 최댓값 사용
-      map[item.gift.id] = Math.max(map[item.gift.id] ?? 0, item.count);
+      detected[item.gift.id] = (detected[item.gift.id] ?? 0) + item.count;
     }
-    onApplyCounts(map, replaceAll);
+    onApplyCounts(detected, replaceAll);
     setResults([]);
   };
 
   return (
     <div className="uploader-box">
-      <div className="uploader-top">
+      {isScanning && (
+        <div className="scan-overlay" role="dialog" aria-modal="true">
+          <div className="scan-modal">
+            <div className="scan-spinner-lg" />
+            <div className="scan-modal-title">스크린샷 분석 중</div>
+            <div className="scan-modal-desc">
+              {progressMsg || '이미지 분석을 준비하고 있습니다...'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="uploader-actions">
         <label className="upload-btn">
           인게임 선물 창 스크린샷 업로드 (또는 Ctrl+V 붙여넣기)
           <input
             type="file"
             accept="image/*"
-            hidden
             disabled={isScanning}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) processFile(file);
               e.target.value = '';
             }}
+            hidden
           />
         </label>
-        <p className="uploader-hint">
-        아이템 가방(선물 탭) 또는 카페 선물 창 스크린샷을 올려주세요. (PC는 Win+Shift+S 캡처 후 Ctrl+V 가능)
-      </p>
       </div>
 
-      {isScanning && <div className="scan-status">⏳ {progressMsg}</div>}
-      {errorMsg && <div className="scan-error">⚠️ {errorMsg}</div>}
+      <p className="uploader-hint">
+        아이템 가방(선물 탭) 또는 카페 선물 창 스크린샷을 올려주세요. (PC는 Win+Shift+S 캡처 후 Ctrl+V 가능)
+      </p>
+
+      {errorMsg && <div className="scan-error">{errorMsg}</div>}
 
       {results.length > 0 && (
         <div className="scan-results">
           <div className="scan-results-header">
-            <strong>인식 결과 확인 ({results.length}종) — 잘못 읽힌 숫자가 있다면 수정 후 적용하세요</strong>
-            <div className="scan-actions">
+            <strong>
+              인식 결과 확인 ({results.length}종) — 잘못 읽힌 숫자가 있다면 수정 후 적용하세요
+            </strong>
+            <div className="scan-apply-group">
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -108,7 +123,7 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
                 />
                 기존 입력값 초기화 후 덮어쓰기
               </label>
-              <button className="apply-btn" onClick={handleApply}>
+              <button type="button" className="apply-btn" onClick={handleApply}>
                 보유 수량에 반영하기
               </button>
             </div>
@@ -117,22 +132,28 @@ export function ImageUploader({ gifts, onApplyCounts }: Props) {
           <div className="scan-grid">
             {results.map((item, idx) => (
               <div key={`${item.gift.id}-${idx}`} className="scan-item">
-                <img src={item.gift.iconUrl} alt={item.gift.name} className="scan-icon" />
-                <div className="scan-meta">
-                  <div className="scan-name">{item.gift.name}</div>
-                  <div className="scan-edit-row">
+                <img
+                  src={item.gift.iconUrl}
+                  alt={item.gift.name}
+                  className="scan-gift-icon"
+                />
+                <div className="scan-item-body">
+                  <div className="scan-gift-name" title={item.gift.name}>
+                    {item.gift.name}
+                  </div>
+                  <div className="scan-ocr-row">
                     <img
                       src={item.previewDataUrl}
-                      alt="인식 영역"
-                      className="ocr-crop"
-                      title="OCR이 읽은 숫자 영역"
+                      alt="OCR 크롭"
+                      className="ocr-preview"
+                      title="인식된 숫자 영역"
                     />
                     <input
                       type="number"
                       min={0}
                       value={item.count}
-                      onChange={(e) => updateScannedCount(idx, e.target.value)}
-                      className="count-input"
+                      onChange={(e) => handleCountEdit(idx, e.target.value)}
+                      className="scan-count-input"
                     />
                   </div>
                 </div>

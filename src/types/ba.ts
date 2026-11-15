@@ -5,7 +5,6 @@ export interface Student {
   isReleasedKr: boolean;
   favorItemTags: string[];
   favorItemUnique: string[];
-  rawFavorDebug: string;
   iconUrl: string;
 }
 

@@ -154,7 +154,7 @@ export default function App() {
   return (
     <div className="container">
       <header className="header">
-        <h1>블루 아카이브 인연랭 계산기 &amp; 합성 선물 판별기</h1>
+        <h1>블아 인연랭 계산기 &amp; 합성 선물 판별기</h1>
         <p>육성할 학생을 선택하고 선물 창 스크린샷을 올리면, 합성해도 되는 선물과 목표 랭크 필요 수량을 자동 계산합니다.</p>
       </header>
 
@@ -241,26 +241,26 @@ export default function App() {
       </section>
 
       <nav className="main-tabs">
-        <button
-          type="button"
-          className={`main-tab-btn ${activeTab === 'crafting' ? 'active' : ''}`}
-          onClick={() => setActiveTab('crafting')}
-        >
-          <span>합성 선물 판별기 &amp; 보유량</span>
-          <span className="tab-badge">합성 OK {craftableOwnedTotal}개</span>
-        </button>
+     <button
+       type="button"
+       className={`main-tab-btn ${activeTab === 'crafting' ? 'active' : ''}`}
+       onClick={() => setActiveTab('crafting')}
+     >
+       <span>합성 선물 판별기 &amp; 보유량</span>
+       <span className="tab-badge">합성 OK {craftableOwnedTotal}개</span>
+     </button>
 
-        <button
-          type="button"
-          className={`main-tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calculator')}
-        >
-          <span>인연 랭크 계산기</span>
-          <span className="tab-badge">{selectedStudents.length}명</span>
-        </button>
-      </nav>
+     <button
+       type="button"
+       className={`main-tab-btn ${activeTab === 'calculator' ? 'active' : ''}`}
+       onClick={() => setActiveTab('calculator')}
+     >
+       <span>인연 랭크 계산기</span>
+       <span className="tab-badge">{selectedStudents.length}명</span>
+     </button>
+   </nav>
 
-      {activeTab === 'crafting' ? (
+      <div style={{ display: activeTab === 'crafting' ? 'block' : 'none' }}>
         <section className="panel">
           <div className="panel-header">
             <h2>2. 보유 선물 및 합성 추천 분류</h2>
@@ -286,7 +286,10 @@ export default function App() {
             </div>
           </div>
 
-          <ImageUploader gifts={gifts} onApplyCounts={applyScannedCounts} />
+          <ImageUploader
+            gifts={gifts}
+            onApplyCounts={applyScannedCounts}
+          />
 
           <div className="gift-grid">
             {displayedGifts.map(({ gift, ownedCount, isSafeToCraft, studentDetails }) => {
@@ -337,7 +340,9 @@ export default function App() {
             })}
           </div>
         </section>
-      ) : (
+      </div>
+
+      <div style={{ display: activeTab === 'calculator' ? 'block' : 'none' }}>
         <BondCalculator
           selectedStudents={selectedStudents}
           gifts={gifts}
@@ -346,7 +351,7 @@ export default function App() {
           onUpdateGoal={updateBondGoal}
           onConsumeGifts={consumeGifts}
         />
-      )}
+      </div>
     </div>
   );
 }

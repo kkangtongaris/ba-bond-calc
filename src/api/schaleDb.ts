@@ -34,7 +34,6 @@ export async function fetchSchaleData(): Promise<{
       favorItemUnique: Array.isArray(s.FavorItemUniqueTags)
         ? s.FavorItemUniqueTags.map(String)
         : [],
-      rawFavorDebug: '',
       iconUrl: `${BASE_URL}/images/student/icon/${s.Id}.webp`,
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));

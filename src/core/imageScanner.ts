@@ -34,6 +34,8 @@ const GRID = 16;
 const TOTAL_CELLS = GRID * GRID;
 const ICON_ASPECT = 1.12;
 
+const yieldToMain = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -213,129 +215,26 @@ function clusterCoordinates(coords: number[], tolerance: number): number[] {
   return clusters.map((group) => group[Math.floor(group.length / 2)]);
 }
 
-function searchRegion(
-  pixels: Uint8ClampedArray,
-  normW: number,
-  normH: number,
-  templates: ColorTemplate[],
-  candidateWidths: number[],
-  yStart: number,
-  yEnd: number,
-  step: number,
-  minScore: number,
-  minVariance: number
-): RawMatch[] {
-  const winR = new Float32Array(TOTAL_CELLS);
-  const winG = new Float32Array(TOTAL_CELLS);
-  const winB = new Float32Array(TOTAL_CELLS);
-  const matches: RawMatch[] = [];
-
-  for (const iconW of candidateWidths) {
-    const iconH = Math.round(iconW / ICON_ASPECT);
-    const maxX = Math.floor(normW - iconW);
-    const maxY = Math.min(Math.floor(normH - iconH * 1.12), yEnd);
-
-    for (let y = yStart; y <= maxY; y += step) {
-      for (let x = 0; x <= maxX; x += step) {
-        if (!sampleWindowRGB(pixels, normW, x, y, iconW, iconH, winR, winG, winB, minVariance)) {
-          continue;
-        }
-
-        let bestScore = minScore - 0.05;
-        let bestTpl: ColorTemplate | null = null;
-
-        for (let t = 0; t < templates.length; t++) {
-          const s = scoreTemplate(templates[t], winR, winG, winB);
-          if (s > bestScore) {
-            bestScore = s;
-            bestTpl = templates[t];
-          }
-        }
-
-        if (bestTpl) {
-          let fineX = x;
-          let fineY = y;
-          let fineScore = bestScore;
-
-          for (let dy = -3; dy <= 3; dy++) {
-            for (let dx = -3; dx <= 3; dx++) {
-              const nx = x + dx;
-              const ny = y + dy;
-              if (nx < 0 || ny < 0 || nx > maxX || ny > maxY) continue;
-              if (!sampleWindowRGB(pixels, normW, nx, ny, iconW, iconH, winR, winG, winB, minVariance)) {
-                continue;
-              }
-              const s = scoreTemplate(bestTpl, winR, winG, winB);
-              if (s > fineScore) {
-                fineScore = s;
-                fineX = nx;
-                fineY = ny;
-              }
-            }
-          }
-
-          if (fineScore >= minScore) {
-            matches.push({
-              tpl: bestTpl,
-              x: fineX,
-              y: fineY,
-              iconW,
-              iconH,
-              score: fineScore,
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return matches;
-}
-
-function dedupeMatches(rawMatches: RawMatch[]): RawMatch[] {
-  rawMatches.sort((a, b) => b.score - a.score);
-  const deduped: RawMatch[] = [];
-  const seenGiftIds = new Set<number>();
-
-  for (const cand of rawMatches) {
-    if (seenGiftIds.has(cand.tpl.gift.id)) continue;
-
-    const overlaps = deduped.some(
-      (kept) =>
-        Math.abs(kept.x - cand.x) < cand.iconW * 0.7 &&
-        Math.abs(kept.y - cand.y) < cand.iconH * 0.7
-    );
-    if (!overlaps) {
-      deduped.push(cand);
-      seenGiftIds.add(cand.tpl.gift.id);
-    }
-  }
-  return deduped;
-}
-
-// 아이템 가방 창 & 카페 선물 창 공통 수량 숫자 추출기
 function extractCleanDigits(
   sharpCanvas: HTMLCanvasElement,
   ox: number,
   oy: number,
   ow: number,
-  oh: number,
-  isCafeBar: boolean
+  oh: number
 ): CleanedDigitBox {
   const emptyCanvas = document.createElement('canvas');
   emptyCanvas.width = 80;
   emptyCanvas.height = 40;
 
-  // 스크롤로 잘린 맨 아래 줄 제외 (카페 하단 바는 화면 끝과 가까우므로 기준 완화)
-  const bottomLimit = isCafeBar ? 1.12 : 1.26;
-  if (oy + oh * bottomLimit > sharpCanvas.height) {
+  if (oy + oh * 1.25 > sharpCanvas.height) {
     return { canvas: emptyCanvas, hasValidDigits: false, xStripped: false };
   }
 
-  let cropX = Math.max(0, ox + ow * (isCafeBar ? 0.18 : 0.28));
-  let cropY = Math.max(0, oy + oh * (isCafeBar ? 0.9 : 1.02));
-  let cropW = Math.min(sharpCanvas.width - cropX, ow * (isCafeBar ? 0.8 : 0.7));
-  let cropH = Math.min(sharpCanvas.height - cropY, oh * (isCafeBar ? 0.34 : 0.31));
+  // 아이콘 내부 우측 하단의 수량 표시 영역을 정확히 타겟팅하도록 위쪽으로 조정
+  const cropX = ox + ow * 0.28;
+  const cropY = oy + oh * 0.72;
+  const cropW = ow * 0.7;
+  const cropH = oh * 0.32;
 
   if (cropW < 10 || cropH < 6) {
     return { canvas: emptyCanvas, hasValidDigits: false, xStripped: false };
@@ -354,145 +253,7 @@ function extractCleanDigits(
   tCtx.imageSmoothingQuality = 'high';
   tCtx.drawImage(sharpCanvas, cropX, cropY, cropW, cropH, 0, 0, w, h);
 
-  const imgData = tCtx.getImageData(0, 0, w, h);
-  const d = imgData.data;
-
-  const mask = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const off = i * 4;
-    const lum = 0.299 * d[off] + 0.587 * d[off + 1] + 0.114 * d[off + 2];
-    if (lum < 175) {
-      mask[i] = 1;
-    }
-  }
-
-  const visited = new Uint8Array(w * h);
-  interface BlobInfo {
-    pixels: number[];
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-  }
-  const blobs: BlobInfo[] = [];
-  const queue = new Int32Array(w * h);
-
-  for (let start = 0; start < w * h; start++) {
-    if (mask[start] === 0 || visited[start] === 1) continue;
-
-    let head = 0;
-    let tail = 0;
-    queue[tail++] = start;
-    visited[start] = 1;
-
-    let minX = w;
-    let maxX = 0;
-    let minY = h;
-    let maxY = 0;
-    const pixels: number[] = [];
-
-    while (head < tail) {
-      const curr = queue[head++];
-      pixels.push(curr);
-      const cx = curr % w;
-      const cy = (curr - cx) / w;
-
-      if (cx < minX) minX = cx;
-      if (cx > maxX) maxX = cx;
-      if (cy < minY) minY = cy;
-      if (cy > maxY) maxY = cy;
-
-      for (let dy = -1; dy <= 1; dy++) {
-        const ny = cy + dy;
-        if (ny < 0 || ny >= h) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx = cx + dx;
-          if (nx < 0 || nx >= w) continue;
-          const next = ny * w + nx;
-          if (mask[next] === 1 && visited[next] === 0) {
-            visited[next] = 1;
-            queue[tail++] = next;
-          }
-        }
-      }
-    }
-
-    blobs.push({ pixels, minX, maxX, minY, maxY });
-  }
-
-  const charBlobs = blobs.filter((b) => {
-    const bw = b.maxX - b.minX + 1;
-    const bh = b.maxY - b.minY + 1;
-    if (b.minY <= 1 || b.minX <= 1 || b.maxX >= w - 1) return false;
-    if (bh < 11 || bh > h * 0.8) return false;
-    if (bw < 3 || bw > h * 0.75) return false;
-    return true;
-  });
-
-  if (charBlobs.length === 0) {
-    return { canvas: emptyCanvas, hasValidDigits: false, xStripped: false };
-  }
-
-  charBlobs.sort((a, b) => a.minX - b.minX);
-
-  let xStripped = false;
-  let digitBlobs = charBlobs;
-  if (charBlobs.length >= 2) {
-    const maxCharH = Math.max(...charBlobs.map((b) => b.maxY - b.minY + 1));
-    const firstH = charBlobs[0].maxY - charBlobs[0].minY + 1;
-    if (firstH < maxCharH * 0.86) {
-      digitBlobs = charBlobs.slice(1);
-      xStripped = true;
-    }
-  }
-
-  const keepPixel = new Uint8Array(w * h);
-  for (const b of digitBlobs) {
-    for (const p of b.pixels) {
-      keepPixel[p] = 1;
-    }
-  }
-
-  for (let i = 0; i < w * h; i++) {
-    const off = i * 4;
-    if (keepPixel[i] === 1) {
-      const lum = 0.299 * d[off] + 0.587 * d[off + 1] + 0.114 * d[off + 2];
-      const cleanVal = Math.max(0, Math.min(255, (lum - 30) * 1.15));
-      d[off] = cleanVal;
-      d[off + 1] = cleanVal;
-      d[off + 2] = cleanVal;
-      d[off + 3] = 255;
-    } else {
-      d[off] = 255;
-      d[off + 1] = 255;
-      d[off + 2] = 255;
-      d[off + 3] = 255;
-    }
-  }
-  tCtx.putImageData(imgData, 0, 0);
-
-  const minDigitX = Math.min(...digitBlobs.map((b) => b.minX));
-  const maxDigitX = Math.max(...digitBlobs.map((b) => b.maxX));
-  const minDigitY = Math.min(...digitBlobs.map((b) => b.minY));
-  const maxDigitY = Math.max(...digitBlobs.map((b) => b.maxY));
-
-  const boxW = maxDigitX - minDigitX + 1;
-  const boxH = maxDigitY - minDigitY + 1;
-  const pad = 18;
-  const slantShift = Math.round(boxH * 0.22);
-
-  const out = document.createElement('canvas');
-  out.width = boxW + slantShift + pad * 2;
-  out.height = boxH + pad * 2;
-  const outCtx = out.getContext('2d', { willReadFrequently: true })!;
-
-  outCtx.fillStyle = '#ffffff';
-  outCtx.fillRect(0, 0, out.width, out.height);
-  outCtx.setTransform(1, 0, 0.22, 1, pad, pad);
-  outCtx.drawImage(temp, minDigitX, minDigitY, boxW, boxH, 0, 0, boxW, boxH);
-  outCtx.setTransform(1, 0, 0, 1, 0, 0);
-
-  return { canvas: out, hasValidDigits: true, xStripped };
+  return { canvas: temp, hasValidDigits: true, xStripped: false };
 }
 
 export async function scanGiftScreenshot(
@@ -526,99 +287,99 @@ export async function scanGiftScreenshot(
   sCtx.drawImage(img, 0, 0, normW, normH);
 
   const { data: pixels } = sCtx.getImageData(0, 0, normW, normH);
+  const winR = new Float32Array(TOTAL_CELLS);
+  const winG = new Float32Array(TOTAL_CELLS);
+  const winB = new Float32Array(TOTAL_CELLS);
 
-  // 1) 아이템 가방 창 탐색 (화면 전체 5열 격자)
-  const invRaw = searchRegion(
-    pixels,
-    normW,
-    normH,
-    templates,
-    [60, 65, 70, 75, 80],
-    0,
-    Math.floor(normH * 0.85),
-    3,
-    0.76,
-    180
-  );
-  const invDeduped = dedupeMatches(invRaw);
+  const candidateWidths = [62, 66, 70, 74, 78, 82];
+  const rawMatches: RawMatch[] = [];
 
-  // 2) 카페 하단 선물 바 탐색 (화면 하단 76%~90% 한 줄 영역 전용, 위쪽 카페 가구 제외)
-  const cafeRaw = searchRegion(
-    pixels,
-    normW,
-    normH,
-    templates,
-    [46, 50, 54, 58, 62],
-    Math.floor(normH * 0.76),
-    Math.floor(normH * 0.9),
-    2,
-    0.63,
-    140
-  );
-  const cafeDeduped = dedupeMatches(cafeRaw);
+  for (const iconW of candidateWidths) {
+    await yieldToMain();
+    const iconH = Math.round(iconW / ICON_ASPECT);
+    const maxX = Math.floor(normW - iconW);
+    const maxY = Math.floor(normH - iconH * 1.15);
 
-  // 카페 하단 바가 감지되고 상단 인벤토리 격자가 아닌 경우 카페 모드로 전환
-  const isCafeMode = cafeDeduped.length >= 1 && invDeduped.length < 4;
+    for (let y = 0; y <= maxY; y += 3) {
+      for (let x = 0; x <= maxX; x += 3) {
+        if (!sampleWindowRGB(pixels, normW, x, y, iconW, iconH, winR, winG, winB, 180)) {
+          continue;
+        }
+
+        let bestScore = 0.72;
+        let bestTpl: ColorTemplate | null = null;
+
+        for (let t = 0; t < templates.length; t++) {
+          const s = scoreTemplate(templates[t], winR, winG, winB);
+          if (s > bestScore) {
+            bestScore = s;
+            bestTpl = templates[t];
+          }
+        }
+
+        if (bestTpl) {
+          let fineX = x;
+          let fineY = y;
+          let fineScore = bestScore;
+
+          for (let dy = -3; dy <= 3; dy++) {
+            for (let dx = -3; dx <= 3; dx++) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx > maxX || ny > maxY) continue;
+              if (!sampleWindowRGB(pixels, normW, nx, ny, iconW, iconH, winR, winG, winB, 180)) {
+                continue;
+              }
+              const s = scoreTemplate(bestTpl, winR, winG, winB);
+              if (s > fineScore) {
+                fineScore = s;
+                fineX = nx;
+                fineY = ny;
+              }
+            }
+          }
+
+          if (fineScore >= 0.76) {
+            rawMatches.push({
+              tpl: bestTpl,
+              x: fineX,
+              y: fineY,
+              iconW,
+              iconH,
+              score: fineScore,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  rawMatches.sort((a, b) => b.score - a.score);
+  const deduped: RawMatch[] = [];
+  const seenGiftIds = new Set<number>();
+
+  for (const cand of rawMatches) {
+    if (seenGiftIds.has(cand.tpl.gift.id)) continue;
+
+    const overlaps = deduped.some(
+      (kept) =>
+        Math.abs(kept.x - cand.x) < cand.iconW * 0.7 &&
+        Math.abs(kept.y - cand.y) < cand.iconH * 0.7
+    );
+    if (!overlaps) {
+      deduped.push(cand);
+      seenGiftIds.add(cand.tpl.gift.id);
+    }
+  }
 
   let finalMatches: RawMatch[] = [];
 
-  if (isCafeMode) {
-    // 카페 선물 바의 대표 Y좌표와 아이콘 크기로 정렬 후 같은 가로줄의 누락 아이콘 추가 스캔
-    const rowY = clusterCoordinates(
-      cafeDeduped.map((m) => m.y),
-      15
-    )[0];
+  if (deduped.length > 0) {
     const widthCounts = new Map<number, number>();
-    for (const m of cafeDeduped) {
+    for (const m of deduped) {
       widthCounts.set(m.iconW, (widthCounts.get(m.iconW) ?? 0) + 1);
     }
-    let domW = cafeDeduped[0].iconW;
-    let maxCnt = 0;
-    for (const [w, c] of widthCounts.entries()) {
-      if (c > maxCnt) {
-        maxCnt = c;
-        domW = w;
-      }
-    }
-    const domH = Math.round(domW / ICON_ASPECT);
-
-    finalMatches = cafeDeduped.filter((m) => Math.abs(m.y - rowY) <= 15);
-    const seenIds = new Set(finalMatches.map((m) => m.tpl.gift.id));
-
-    // 대표 가로줄(rowY ± 2px)을 따라 좌우로 훑으며 EMPTY가 아닌 나머지 선물 보완 탐색
-    const sweepMatches = searchRegion(
-      pixels,
-      normW,
-      normH,
-      templates,
-      [domW],
-      Math.max(0, rowY - 2),
-      Math.min(normH - domH, rowY + 2),
-      2,
-      0.56,
-      130
-    );
-
-    for (const cand of sweepMatches.sort((a, b) => b.score - a.score)) {
-      if (seenIds.has(cand.tpl.gift.id)) continue;
-      if (cand.x < normW * 0.08 || cand.x + domW > normW * 0.93) continue;
-
-      const overlaps = finalMatches.some(
-        (kept) => Math.abs(kept.x - cand.x) < domW * 0.72
-      );
-      if (!overlaps) {
-        finalMatches.push({ ...cand, y: rowY, iconW: domW, iconH: domH });
-        seenIds.add(cand.tpl.gift.id);
-      }
-    }
-  } else {
-    if (invDeduped.length === 0) return [];
-
-    const widthCounts = new Map<number, number>();
-    for (const m of invDeduped) {
-      widthCounts.set(m.iconW, (widthCounts.get(m.iconW) ?? 0) + 1);
-    }
-    let dominantW = invDeduped[0].iconW;
+    let dominantW = deduped[0].iconW;
     let maxCount = 0;
     for (const [w, cnt] of widthCounts.entries()) {
       if (cnt > maxCount) {
@@ -628,14 +389,9 @@ export async function scanGiftScreenshot(
     }
     const dominantH = Math.round(dominantW / ICON_ASPECT);
 
-    finalMatches = invDeduped.filter(
-      (m) => Math.abs(m.iconW - dominantW) <= 6 && m.y + dominantH * 1.26 <= normH
+    finalMatches = deduped.filter(
+      (m) => Math.abs(m.iconW - dominantW) <= 6 && m.y + dominantH * 1.24 <= normH
     );
-
-    const seenGiftIds = new Set(finalMatches.map((m) => m.tpl.gift.id));
-    const winR = new Float32Array(TOTAL_CELLS);
-    const winG = new Float32Array(TOTAL_CELLS);
-    const winB = new Float32Array(TOTAL_CELLS);
 
     if (finalMatches.length >= 4) {
       const colXs = clusterCoordinates(
@@ -645,16 +401,7 @@ export async function scanGiftScreenshot(
       const rowYs = clusterCoordinates(
         finalMatches.map((m) => m.y),
         dominantH * 0.35
-      ).filter((ry) => ry + dominantH * 1.26 <= normH);
-
-      for (const m of finalMatches) {
-        const snapX = colXs.find((cx) => Math.abs(cx - m.x) <= dominantW * 0.35);
-        const snapY = rowYs.find((ry) => Math.abs(ry - m.y) <= dominantH * 0.35);
-        if (snapX !== undefined) m.x = snapX;
-        if (snapY !== undefined) m.y = snapY;
-        m.iconW = dominantW;
-        m.iconH = dominantH;
-      }
+      ).filter((ry) => ry + dominantH * 1.24 <= normH);
 
       for (const ry of rowYs) {
         for (const cx of colXs) {
@@ -681,8 +428,8 @@ export async function scanGiftScreenshot(
                   bestCellScore = s;
                   bestCellMatch = {
                     tpl: templates[t],
-                    x: cx,
-                    y: ry,
+                    x: nx,
+                    y: ny,
                     iconW: dominantW,
                     iconH: dominantH,
                     score: s,
@@ -727,8 +474,7 @@ export async function scanGiftScreenshot(
       m.x * scaleToOrig,
       m.y * scaleToOrig,
       m.iconW * scaleToOrig,
-      m.iconH * scaleToOrig,
-      isCafeMode
+      m.iconH * scaleToOrig
     );
 
     if (!cleaned.hasValidDigits) {
@@ -736,7 +482,7 @@ export async function scanGiftScreenshot(
     }
 
     await worker.setParameters({
-      tessedit_char_whitelist: cleaned.xStripped ? '0123456789' : 'x0123456789',
+      tessedit_char_whitelist: 'xX0123456789',
     });
 
     const { data } = await worker.recognize(cleaned.canvas);
