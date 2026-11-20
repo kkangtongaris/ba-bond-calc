@@ -197,7 +197,7 @@ export function calculateBondPlans(
       }
     }
 
-    // 2단계-A: 비선호 선물을 합성 없이 그대로 직접 투입하는 모드
+    // 2단계-A: 비선호 선물을 합성 없이 전부(2★ +20, 3★ +120) 직접 투입하는 모드
     if (needed > 0 && usageMode === 'include_neutral') {
       const neutralCandidates = allGifts
         .filter((gift) => !gift.isSelectorBox && (remainingStock[gift.id] ?? 0) > 0)
@@ -231,8 +231,53 @@ export function calculateBondPlans(
       }
     }
 
-    // 2단계-B: 비선호 2성 선물을 2:1 합성(선택 상자)해 최고 효율 2성 선호 선물로 투입하는 모드
-    if (needed > 0 && usageMode === 'synthesize_neutral') {
+    // 2단계-B: 비선호 3성(고급 +120) 선물을 직접 투입하는 모드
+    if (
+      needed > 0 &&
+      (usageMode === 'include_ssr_neutral' || usageMode === 'synthesize_and_ssr')
+    ) {
+      const neutralSsrCandidates = allGifts
+        .filter(
+          (gift) =>
+            gift.rarity === 'SSR' &&
+            !gift.isSelectorBox &&
+            (remainingStock[gift.id] ?? 0) > 0
+        )
+        .map((gift) => {
+          const matchCount = getMatchCount(student, gift);
+          const expPerItem = calculateGiftExp(gift, matchCount);
+          return { gift, matchCount, expPerItem };
+        })
+        .filter((c) => c.matchCount === 0)
+        .sort((a, b) => b.expPerItem - a.expPerItem);
+
+      for (const cand of neutralSsrCandidates) {
+        if (needed <= 0) break;
+        const available = remainingStock[cand.gift.id] ?? 0;
+        if (available <= 0) continue;
+
+        const countToUse = Math.min(available, Math.ceil(needed / cand.expPerItem));
+        if (countToUse > 0) {
+          const totalExp = countToUse * cand.expPerItem;
+          allocatedGifts.push({
+            gift: cand.gift,
+            useCount: countToUse,
+            expPerItem: cand.expPerItem,
+            totalExp,
+            matchCount: 0,
+          });
+          remainingStock[cand.gift.id] = available - countToUse;
+          consumedMap[cand.gift.id] = (consumedMap[cand.gift.id] ?? 0) + countToUse;
+          needed -= totalExp;
+        }
+      }
+    }
+
+    // 2단계-C: 비선호 2성 선물을 2:1 합성(선택 상자)해 최고 효율 2성 선호 선물로 투입하는 모드
+    if (
+      needed > 0 &&
+      (usageMode === 'synthesize_neutral' || usageMode === 'synthesize_and_ssr')
+    ) {
       const bestSrGiftEntry = allGifts
         .filter((g) => g.rarity === 'SR' && !g.isSelectorBox)
         .map((gift) => {
@@ -290,7 +335,7 @@ export function calculateBondPlans(
         }
       }
     }
-
+    
     const gainedExp = allocatedGifts.reduce((sum, item) => sum + item.totalExp, 0);
     const shortageExp = Math.max(0, requiredExp - gainedExp);
     const estimatedRank = simulateReachedRank(currentRank, gainedExp);

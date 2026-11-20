@@ -153,12 +153,42 @@ export function BondCalculator({
           <label className="checkbox-label">
             <input
               type="checkbox"
-              checked={usageMode === 'synthesize_neutral'}
-              onChange={(e) =>
-                setUsageMode(e.target.checked ? 'synthesize_neutral' : 'preferred_only')
+              checked={
+                usageMode === 'synthesize_neutral' ||
+                usageMode === 'synthesize_and_ssr'
               }
+              onChange={(e) => {
+                const hasSsr =
+                  usageMode === 'include_ssr_neutral' ||
+                  usageMode === 'synthesize_and_ssr';
+                if (e.target.checked) {
+                  setUsageMode(hasSsr ? 'synthesize_and_ssr' : 'synthesize_neutral');
+                } else {
+                  setUsageMode(hasSsr ? 'include_ssr_neutral' : 'preferred_only');
+                }
+              }}
             />
             비선호 2★ 선물을 전부 선택상자(2:1 합성)로 바꿔서 계산
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={
+                usageMode === 'include_ssr_neutral' ||
+                usageMode === 'synthesize_and_ssr'
+              }
+              onChange={(e) => {
+                const hasSyn =
+                  usageMode === 'synthesize_neutral' ||
+                  usageMode === 'synthesize_and_ssr';
+                if (e.target.checked) {
+                  setUsageMode(hasSyn ? 'synthesize_and_ssr' : 'include_ssr_neutral');
+                } else {
+                  setUsageMode(hasSyn ? 'synthesize_neutral' : 'preferred_only');
+                }
+              }}
+            />
+            비선호 3★(고급 +120) 선물도 직접 포함해서 계산
           </label>
         </div>
       </div>

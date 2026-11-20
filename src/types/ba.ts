@@ -38,7 +38,9 @@ export interface BondGoal {
 export type GiftUsageMode =
   | 'preferred_only'
   | 'include_neutral'
-  | 'synthesize_neutral';
+  | 'synthesize_neutral'
+  | 'include_ssr_neutral'
+  | 'synthesize_and_ssr';
 
 export interface GiftAllocation {
   gift: GiftItem;
